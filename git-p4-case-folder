@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Can git-p4 be persuaded to do case-folding on a Linux client, such
+# that the cloned repo has all filenames folded?
+
+dir=/tmp/git-p4-case-test
+cli=$dir/cli
+db=$dir/db
+rm -fr $dir
+
+cleanup() {
+    test -f $dir/pid && kill $(cat $dir/pid)
+}
+
+trap cleanup 0
+
+mkdir -p $db $cli $dir/git-case-sensitive $dir/git-case-fold
+P4PORT=localhost:2345
+export P4PORT
+P4CLIENT=cli
+export P4CLIENT
+
+(cd $db && p4d -C1 -q -d --pid-file=$dir/pid) &&
+echo "create cli..." &&
+(cd $cli &&
+    p4 client -i <<-EOF &&
+		Client: cli
+		Root: $dir/cli
+		View:
+	    //depot/... //cli/...
+EOF
+
+    mkdir Path PATH pATH &&
+    >Path/File1 &&
+    >PATH/File2 &&
+    >pATH/File3 &&
+
+    p4 add */File* &&
+    p4 submit -d "first commit"
+) &&
+
+# Don't do anything special. The paths will come out with the
+# case that is stored in perforce, i.e. all different.
+
+(cd $dir/git-case-sensitive &&
+    git p4 clone //depot/... &&
+    ls -R
+) &&
+
+# Force case-folding in git-p4. The paths will all come out folded.
+
+(cd $dir/git-case-fold &&
+    mkdir depot &&
+    cd depot &&
+    git init . &&
+    git config core.ignorecase true &&
+    git p4 sync //depot/... &&
+    git checkout -q p4/master &&
+    ls -R
+)
